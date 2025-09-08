@@ -1,0 +1,51 @@
+# config/mexc.yaml -- Phase1 core config
+
+mexc:
+  rest_base: "https://api.mexc.com"
+  ws_base: "wss://contract.mexc.com/ws"   # placeholder; will update with exact spot endpoint
+  rest_poll_interval_s: 10                # REST poll interval (seconds) for listings
+  ws_snapshot_interval_ms: 500            # interval for pulling orderbook snapshot (ms)
+  book_snapshot_every_s: 2                # how often to write a full top-N snapshot (seconds)
+  top_n: 20                               # orderbook depth levels to store
+  subscribe_default:
+    - "trade"
+    - "depth"                             # orderbook diffs
+  max_concurrent_symbols: 6               # how many new listings we can track simultaneously
+  raw_parquet_path: "/home/hari/beast-bot/data/raw"  # replace USER with your WSL username
+  raw_parquet_hourly_rotate: true
+
+nats:
+  host: "127.0.0.1"
+  port: 4222
+  jetstream: true
+  subjects:
+    raw: "mexc.raw"
+    trades: "mexc.trades"
+    book_diff: "mexc.book.diff"
+    listings: "mexc.listings"
+
+clickhouse:
+  host: "127.0.0.1"
+  port: 9000
+  database: "mexc_analytics"
+  user: "default"
+  password: ""
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  db: 0
+
+postgres:
+  host: "127.0.0.1"
+  port: 5432
+  user: "beastbot"
+  password: "beastpass"
+  db: "beastdb"
+
+logging:
+  level: "INFO"
+  parquet_checksum: "sha256"
+
+metrics:
+  prometheus_port: 8000
