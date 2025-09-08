@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: beastbot
+      POSTGRES_PASSWORD: beastpass
+      POSTGRES_DB: beastdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+
+volumes:
+  pgdata:
