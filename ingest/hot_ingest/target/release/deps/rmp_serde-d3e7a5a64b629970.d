@@ -1,0 +1,12 @@
+/home/hari/beast-bot/ingest/hot_ingest/target/release/deps/rmp_serde-d3e7a5a64b629970.d: /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/lib.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/bytes.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/config.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/decode.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/encode.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/../README.md
+
+/home/hari/beast-bot/ingest/hot_ingest/target/release/deps/librmp_serde-d3e7a5a64b629970.rlib: /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/lib.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/bytes.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/config.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/decode.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/encode.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/../README.md
+
+/home/hari/beast-bot/ingest/hot_ingest/target/release/deps/librmp_serde-d3e7a5a64b629970.rmeta: /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/lib.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/bytes.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/config.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/decode.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/encode.rs /home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/../README.md
+
+/home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/lib.rs:
+/home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/bytes.rs:
+/home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/config.rs:
+/home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/decode.rs:
+/home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/encode.rs:
+/home/hari/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.0/src/../README.md:
