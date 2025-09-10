@@ -1,0 +1,47 @@
+version: '3.8'
+services:
+  nats:
+    image: nats:2.10.6
+    command: ["-c", "/etc/nats/nats_server.conf"]
+    volumes:
+      - ./infra/nats_server.conf:/etc/nats/nats_server.conf:ro
+      - nats_jetstream_data:/data/jetstream
+    ports:
+      - "4222:4222"   # NATS client
+      - "8222:8222"   # monitoring
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:9.5.0
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  nats_jetstream_data:
+  clickhouse_data:
