@@ -1,14 +1,16 @@
+use futures_util::StreamExt;
 use anyhow::Result;
 use clap::Parser;
-use futures::StreamExt;
-use async_nats::Client; // CORRECTED: Use the Client from async-nats
 use rmp_serde::to_vec_named;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_tungstenite::connect_async;
 use url::Url;
+
+// async-nats imports
+use async_nats::Client as NatsClient;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -31,9 +33,13 @@ struct Args {
     /// subject prefix (e.g. mexc.raw)
     #[arg(long, default_value = "mexc.raw")]
     subj_prefix: String,
+
+    /// Use JetStream publish (durable) and wait for server ACK
+    #[arg(long, default_value_t = false)]
+    jetstream: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct RawMsg {
     symbol: String,
     price: Option<f64>,
@@ -45,83 +51,119 @@ struct RawMsg {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    println!("hot_ingest starting. mode={} nats={} ws/url={}", args.mode, args.nats_url, args.ws_url);
+    println!(
+        "hot_ingest starting. mode={} nats={} ws_url={} jetstream={}",
+        args.mode, args.nats_url, args.ws_url, args.jetstream
+    );
 
-    // CORRECTED: Connect to NATS using the async-nats crate
-    let nc = async_nats::connect(&args.nats_url).await?;
+    let nc: NatsClient = async_nats::connect(&args.nats_url).await?;
     println!("Connected to NATS at {}", args.nats_url);
 
-    if args.mode == "file" {
-        run_file_mode(&nc, &args.file, &args.subj_prefix).await?;
+    let js_ctx = if args.jetstream {
+        Some(async_nats::jetstream::new(nc.clone()))
     } else {
-        run_ws_mode(&nc, &args.ws_url, &args.subj_prefix).await?;
+        None
+    };
+
+    if args.mode == "file" {
+        run_file_mode(&nc, js_ctx.as_ref(), &args.file, &args.subj_prefix).await?;
+    } else {
+        run_ws_mode(&nc, js_ctx.as_ref(), &args.ws_url, &args.subj_prefix).await?;
     }
 
     Ok(())
 }
 
-// CORRECTED: Function signature now uses the correct Client type
-async fn run_file_mode(nc: &Client, file_path: &str, subj_prefix: &str) -> Result<()> {
+async fn run_file_mode(
+    nc: &NatsClient,
+    js_opt: Option<&async_nats::jetstream::Context>,
+    file_path: &str,
+    subj_prefix: &str,
+) -> Result<()> {
     let f = File::open(file_path).await?;
     let reader = BufReader::new(f);
     let mut lines = reader.lines();
     let mut seq: u64 = 0;
+
     while let Some(line) = lines.next_line().await? {
-        if line.trim().is_empty() { continue; }
-        // parse as JSON
+        if line.trim().is_empty() {
+            continue;
+        }
         let v: serde_json::Value = serde_json::from_str(&line)?;
-        let symbol = v.get("symbol").and_then(|s| s.as_str()).unwrap_or("UNKNOWN").to_string();
+        let symbol = v
+            .get("symbol")
+            .and_then(|s| s.as_str())
+            .unwrap_or("UNKNOWN")
+            .to_string();
 
-        // build RawMsg (partial)
-        let raw = RawMsg {
-            symbol: symbol.clone(),
-            price: v.get("price").and_then(|p| p.as_f64()),
-            qty: v.get("qty").and_then(|q| q.as_f64()),
-            other: v.clone(),
-        };
-
-        // stamp local monotonic-like timestamp (use SystemTime as practical)
-        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros() as u64;
-
-        // prepare envelope
         let envelope = serde_json::json!({
-            "symbol": raw.symbol,
-            "price": raw.price,
-            "qty": raw.qty,
+            "symbol": symbol,
+            "price": v.get("price").and_then(|p| p.as_f64()),
+            "qty": v.get("qty").and_then(|q| q.as_f64()),
             "seq_local": seq,
-            "ts_local_us": now,
-            "raw": raw.other
+            "ts_local_us": SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros() as u64,
+            "raw": v
         });
 
-        // encode MessagePack (rmp-serde)
         let packed = to_vec_named(&envelope)?;
+        let subj = format!(
+            "{}.{}",
+            subj_prefix,
+            envelope
+                .get("symbol")
+                .and_then(|s| s.as_str())
+                .unwrap_or("UNKNOWN")
+        );
 
-        // publish to subject mexc.raw.<symbol>
-        let subj = format!("{}.{}", subj_prefix, envelope.get("symbol").and_then(|s| s.as_str()).unwrap_or("UNKNOWN"));
-        
-        // CORRECTED: The publish method takes the payload by value or convertible type
-        match nc.publish(subj.clone(), packed.into()).await {
-            Ok(_) => {
-                println!("PUB seq={} subj={} bytes={}", seq, subj, to_vec_named(&envelope)?.len());
+        if let Some(js) = js_opt {
+            let t0 = std::time::Instant::now();
+            match js.publish(subj.clone(), packed.into()).await {
+                Ok(ack) => {
+                    let elapsed_us = t0.elapsed().as_micros();
+                    println!(
+                        "JET_ACK seq_local={} subj={} ack={:?} ack_time_us={}",
+                        seq, subj, ack, elapsed_us
+                    );
+                }
+                Err(e) => {
+                    eprintln!("JET_PUBLISH_ERROR seq_local={} subj={} err={}", seq, subj, e);
+                }
             }
-            Err(e) => {
-                eprintln!("Publish error: {}", e);
-            }
+        } else {
+            // CORRECTED: The typo std.time is now std::time
+            let t0 = std::time::Instant::now();
+            let packed_len = packed.len(); 
+            nc.publish(subj.clone(), packed.into()).await?;
+            nc.flush().await?;
+            let t_us = t0.elapsed().as_micros();
+            println!(
+                "PUB seq_local={} subj={} bytes={} flush_time_us={}",
+                seq,
+                subj,
+                packed_len,
+                t_us
+            );
         }
 
         seq += 1;
     }
+
     Ok(())
 }
 
-// CORRECTED: Function signature now uses the correct Client type
-async fn run_ws_mode(nc: &Client, ws_url: &str, subj_prefix: &str) -> Result<()> {
+async fn run_ws_mode(
+    nc: &NatsClient,
+    js_opt: Option<&async_nats::jetstream::Context>,
+    ws_url: &str,
+    subj_prefix: &str,
+) -> Result<()> {
     let url = Url::parse(ws_url)?;
     println!("Connecting to WS {}", url);
     let (ws_stream, _resp) = connect_async(url).await?;
     println!("Connected to WS.");
-    let (_write, mut read) = ws_stream.split();
+    let (_write, mut read) = ws_stream.split(); 
     let mut seq: u64 = 0;
+
     while let Some(msg) = read.next().await {
         let msg = msg?;
         let text = if msg.is_text() {
@@ -132,7 +174,6 @@ async fn run_ws_mode(nc: &Client, ws_url: &str, subj_prefix: &str) -> Result<()>
             continue;
         };
 
-        // try parse as JSON
         let v: serde_json::Value = match serde_json::from_str(&text) {
             Ok(v) => v,
             Err(e) => {
@@ -141,33 +182,63 @@ async fn run_ws_mode(nc: &Client, ws_url: &str, subj_prefix: &str) -> Result<()>
             }
         };
 
-        let symbol = v.get("symbol").and_then(|s| s.as_str()).unwrap_or("UNKNOWN").to_string();
-        let raw = RawMsg {
-            symbol: symbol.clone(),
-            price: v.get("price").and_then(|p| p.as_f64()),
-            qty: v.get("qty").and_then(|q| q.as_f64()),
-            other: v.clone(),
-        };
+        let symbol = v
+            .get("symbol")
+            .and_then(|s| s.as_str())
+            .unwrap_or("UNKNOWN")
+            .to_string();
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros() as u64;
         let envelope = serde_json::json!({
-            "symbol": raw.symbol,
-            "price": raw.price,
-            "qty": raw.qty,
+            "symbol": symbol,
+            "price": v.get("price").and_then(|p| p.as_f64()),
+            "qty": v.get("qty").and_then(|q| q.as_f64()),
             "seq_local": seq,
-            "ts_local_us": now,
-            "raw": raw.other
+            "ts_local_us": SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros() as u64,
+            "raw": v
         });
 
         let packed = to_vec_named(&envelope)?;
-        let subj = format!("{}.{}", subj_prefix, envelope.get("symbol").and_then(|s| s.as_str()).unwrap_or("UNKNOWN"));
-        
-        // CORRECTED: The publish method takes the payload by value or convertible type
-        match nc.publish(subj.clone(), packed.into()).await {
-            Ok(_) => println!("PUB seq={} subj={} bytes={}", seq, subj, to_vec_named(&envelope)?.len()),
-            Err(e) => eprintln!("Publish error: {}", e),
+        let subj = format!(
+            "{}.{}",
+            subj_prefix,
+            envelope
+                .get("symbol")
+                .and_then(|s| s.as_str())
+                .unwrap_or("UNKNOWN")
+        );
+
+        if let Some(js) = js_opt {
+            let t0 = std::time::Instant::now();
+            match js.publish(subj.clone(), packed.into()).await {
+                Ok(ack) => {
+                    let elapsed_us = t0.elapsed().as_micros();
+                    println!(
+                        "JET_ACK seq_local={} subj={} ack={:?} ack_time_us={}",
+                        seq, subj, ack, elapsed_us
+                    );
+                }
+                Err(e) => {
+                    eprintln!("JET_PUBLISH_ERROR seq_local={} subj={} err={}", seq, subj, e);
+                }
+            }
+        } else {
+            // CORRECTED: The typo std.time is now std::time
+            let t0 = std::time::Instant::now();
+            let packed_len = packed.len(); 
+            nc.publish(subj.clone(), packed.into()).await?;
+            nc.flush().await?;
+            let t_us = t0.elapsed().as_micros();
+            println!(
+                "PUB seq_local={} subj={} bytes={} flush_time_us={}",
+                seq,
+                subj,
+                packed_len,
+                t_us
+            );
         }
+
         seq += 1;
     }
+
     Ok(())
 }
